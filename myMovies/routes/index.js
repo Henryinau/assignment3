@@ -1,7 +1,7 @@
 var express = require('express');
 var router = express.Router();
 const authorization = require("../middleware/authorization");
-
+const profile1 = require("../middleware/profile1");
 /* GET home page. */
 router.get('/', function(req, res, next) {
   res.render('index', { title: 'Express' });
@@ -184,7 +184,7 @@ router.get("/movies/search", function (req, res, next) {
   });
   
 
-router.post('/movies/update', authorization, (req, res) => {
+router.post('/movies/update', (req, res) => {
   if (!req.body.Basics || !req.body.Year || !req.body.Runtime) {
     res.status(400).json({ message: `Error updating runtimeMinutes` });
     console.log(`Error on request body:`, JSON.stringify(req.body));
@@ -271,5 +271,167 @@ router.get("/people/:id", authorization, function (req, res, next) {
     });
 });
 
+const jwt = require('jsonwebtoken');
+router.get('/user/:email/profile', function(req, res, next) {
+  const bearerToken = req.headers.authorization;
+
+  if(bearerToken && bearerToken.startsWith('Bearer ')){
+
+    const token = req.headers.authorization.replace(/^Bearer /, "");
+    try {
+      jwt.verify(token, process.env.JWT_SECRET);
+  } catch (e) {
+      if (e.name === "TokenExpiredError") {
+          res.status(401).json({ error: true, message: "JWT token has expired" });
+      } else {
+          res.status(401).json({ error: true, message: "Invalid JWT token" });
+      }
+      return;
+  }
+  //return all user info if token exist
+  req.db
+  .from("users")
+  .select(
+    "email",
+    "firstName",
+    "lastName",
+    "dob",
+    "address"
+  )
+  .where("email", "=", req.params.email)
+  .then((rows) => {
+
+    // 检查是否找到人物信息
+    if (rows.length === 0) {
+      // 返回404错误响应
+      res.status(404).json({
+        error: true,
+        message: "User not found",
+      });
+      return;
+    }
+
+    const profile = {
+      email: rows[0].email,
+      firstName: rows[0].firstName,
+      lastName: rows[0].lastName,
+      dob: rows[0].dob,
+      address: rows[0].address
+    };
+    res.status(200).json({Error: false, Message: 'Success', Profile: profile});
+  })
+  .catch((err) => {
+    console.log(err);
+    // return 500 error response
+    res.status(500).json({ error: true, message: 'Error in MySQL query' });
+  });
+
+  }
+  else{
   
+  //return basic user info if token exist
+  req.db
+  .from("users")
+  .select(
+    "email",
+    "firstName",
+    "lastName"
+  )
+  .where("email", "=", req.params.email)
+  .then((rows) => {
+    // 检查是否找到人物信息
+    if (rows.length === 0) {
+      // 返回404错误响应
+      res.status(404).json({
+        error: true,
+        message: "User not found",
+      });
+      return;
+    }
+    const profile = {
+      email: rows[0].email,
+      firstName: rows[0].firstName,
+      lastName: rows[0].lastName,
+      
+    };
+    res.status(200).json({Error: false, Message: 'Success', Profile: profile});
+  })
+  .catch((err) => {
+    console.log(err);
+    // return 500 error response
+    res.status(500).json({ error: true, message: 'Error in MySQL query' });
+  });
+  }
+
+});
+  
+router.post('/user/:email/profile', profile1, function(req, res) {
+  
+  const filter = {
+    "email": req.params.email
+  };
+  const profile = {
+    
+    "firstName": req.body.firstName,
+    "lastName": req.body.lastName,
+    "dob": req.body.dob,
+    "address": req.body.address
+  };
+  req.db('users').where(filter).update(profile)
+  .then(_ => {
+     //display updated profile info---------------------------------
+     req.db('users')
+        .where(filter)
+        .select(
+          "email",
+          "firstName",
+          "lastName",
+          "dob",
+          "address"
+        )
+        .then((rows) => {
+          // 检查是否找到用户信息
+          if (rows.length === 0) {
+            // 返回404错误响应
+            res.status(404).json({
+              error: true,
+              message: "User not found",
+            });
+            return;
+          }
+          
+          if (!req.body.firstName || !req.body.lastName || !req.body.dob || !req.body.address) {
+            res.status(400).json({ error: true, message: "Request body incomplete: firstName, lastName, dob and address are required" });
+            return;
+          }
+        
+          if (typeof req.body.firstName !== 'string' || typeof req.body.lastName !== 'string' || typeof req.body.dob !== 'string' || typeof req.body.address !== 'string') {
+            res.status(400).json({ error: true, message: "Request body invalid: firstName, lastName, dob and address must be strings only" });
+            return;
+          }
+        
+          // 验证日期格式
+          const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+          if (!dateRegex.test(req.body.dob)) {
+            res.status(400).json({ error: true, message: "Invalid input: dob must be a real date in format YYYY-MM-DD" });
+            return;
+          }
+        
+
+    res.status(200).json({
+            email: rows[0].email,
+            firstName: rows[0].firstName,
+            lastName: rows[0].lastName,
+            dob: rows[0].dob,
+            address: rows[0].address
+        });
+    
+    })
+})
+  .catch(error => {
+    res.status(500).json({ message: 'Database error - not updated' });
+  });
+
+});
+
 module.exports = router;
