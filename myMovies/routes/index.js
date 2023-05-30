@@ -8,6 +8,9 @@ router.get('/', function(req, res, next) {
 });
 
 router.get("/movies/search", function (req, res, next) {
+  const perPage = 100; // 每页显示的最大数据条数
+  const currentPage = req.query.page || 1; // 当前页码，默认为第一页
+
   req.db
     .from("basics")
     .select("originalTitle",
@@ -19,7 +22,49 @@ router.get("/movies/search", function (req, res, next) {
     "rated")
     .orderBy("imdbRating", "asc")
     .then((rows) => {
-      res.json({ Error: false, Message: "Success", Movie: rows });
+      const total = rows.length; // 总数据量
+      const lastPage = Math.ceil(total / perPage); // 最后一页的页码
+
+      // 定义存储所有分页数据的数组
+      const paginatedData = [];
+
+      // 分页处理数据
+      for (let i = 0; i < total; i += perPage) {
+        const from = i; // 当前页数据的起始索引
+        const to = Math.min(i + perPage, total); // 当前页数据的结束索引
+
+        // 获取当前页的数据，并为每个电影对象添加页码属性和pagination对象
+        const movies = rows.slice(from, to).map((movie, index) => {
+          return {
+            title: movie.originalTitle,
+            year: movie.year,
+            imdbID: movie.tconst,
+            imdbRating: movie.imdbRating,
+            rottenTomatoesRating: movie.rottentomatoesRating,
+            metacriticRating: movie.metacriticRating,
+            classification: movie.rated,
+          };
+        });
+
+        // 创建pagination对象
+        const pagination = {
+          total: total,
+          lastPage: lastPage,
+          perPage: perPage,
+          currentPage: Math.ceil((from + 1) / perPage), // 当前页码
+          from: from,
+          to: to-1,
+
+          // 如果是最后一页，则修正结束索引为实际的最后一条数据索引
+          ...(Math.ceil((from + 1) / perPage) === lastPage && { to: total - 1 }),
+        };
+
+        // 将当前页数据和pagination对象添加到paginatedData数组中
+        paginatedData.push({ data: movies, pagination });
+      }
+
+      // 返回所有分页数据
+      res.json(paginatedData);
     })
     .catch((err) => {
       console.log(err);
